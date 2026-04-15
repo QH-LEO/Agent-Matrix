@@ -433,9 +433,19 @@ function buildITermAppleScript(run, requirement) {
 tell application "iTerm2"
   activate
   set newWindow to (create window with default profile)
+  delay 0.2
   try
-    tell newWindow to set fullscreen to true
+    set fullscreen of newWindow to true
+  on error
+    try
+      tell application "System Events"
+        tell process "iTerm2"
+          keystroke "f" using {control down, command down}
+        end tell
+      end tell
+    end try
   end try
+  delay 0.2
   tell current session of newWindow
     write text ${appleScriptString(command)}
   end tell
@@ -448,8 +458,11 @@ function buildClaudeCommand(run, requirement) {
   const leaderAgentName = run.pipeline.leaderAgentName || toLeaderAgentName(run.pipeline.name);
   const claudeCommand = `claude --agent ${leaderAgentName}`;
   const prompt = [
-    `你是 AgentFlow 流水线「${run.pipeline.name}」的 Team Leader。`,
+    `@${leaderAgentName}`,
+    "",
+    `请以完整角色 @${leaderAgentName} 进入 AgentFlow 流水线「${run.pipeline.name}」的 Team Leader 模式。`,
     "请基于下面的流水线配置和用户需求执行研发流程。",
+    "你需要按阶段推进，并在委托时使用完整 @Agent 名称来激活对应子 Agent。",
     "先分析需求，再按阶段推进，并在每个阶段输出需要人工确认的检查点。",
     "",
     summary,
@@ -461,7 +474,7 @@ function buildClaudeCommand(run, requirement) {
     `printf '%s\\n' ${shellQuote("AgentFlow 一键启动")}`,
     `printf '%s\\n' ${shellQuote(`Run ID: ${run.runId}`)}`,
     `printf '%s\\n' ${shellQuote(`Project: ${run.pipeline.projectPath}`)}`,
-    `printf '%s\\n' ${shellQuote(`Leader: ${leaderAgentName}`)}`,
+    `printf '%s\\n' ${shellQuote(`Leader: @${leaderAgentName}`)}`,
     `${claudeCommand} ${shellQuote(prompt)}`,
   ].join("; ");
 }
@@ -474,7 +487,7 @@ function buildRunSummary(run, requirement) {
         ? stage.agents
             .map((agent) => {
               const skills = agent.skills.map((skill) => `${skill.name}@${skill.version}`).join(", ") || "no skills";
-              return `    - Agent: ${agent.name}\n      Responsibility: ${agent.responsibility || "no responsibility"}\n      Skills: ${skills}`;
+              return `    - Agent: @${agent.agentName} (${agent.name})\n      Responsibility: ${agent.responsibility || "no responsibility"}\n      Skills: ${skills}`;
             })
             .join("\n")
         : "    - no agents";
@@ -484,7 +497,7 @@ function buildRunSummary(run, requirement) {
 
   return [
     `Pipeline: ${pipeline.name}`,
-    `Leader agent: ${pipeline.leaderAgentName || toLeaderAgentName(pipeline.name)}`,
+    `Leader agent: @${pipeline.leaderAgentName || toLeaderAgentName(pipeline.name)}`,
     `Project: ${pipeline.projectPath}`,
     "",
     "Delegation policy:",
@@ -594,6 +607,7 @@ ${JSON.stringify(pipeline, null, 2)}
 Execution rules:
 - Start by restating the user requirement and mapping it to the pipeline stages.
 - Use the configured agents, responsibilities, and skills as your delegation model.
+- When activating yourself or delegating, always mention agents with their full Claude role handle, for example @${leaderAgentName} or @agentflow-product-manager.
 - Shared agents are referenced by name and must not be rewritten by this pipeline.
 - Apply the delegationPolicy strictly: start simple, escalate only when the rules justify it.
 - Never exceed maxDepth or maxParallelAgents. If deeper delegation is needed, ask the user first.
