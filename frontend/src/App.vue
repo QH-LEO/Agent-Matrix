@@ -131,6 +131,7 @@ const state = reactive({
   focusedStageId: "",
   focusedAgentId: "",
   mobileNavOpen: false,
+  sidebarCollapsed: false,
   menuItems,
   pipelines: loadPersistedPipelines(),
   forms: {
@@ -156,6 +157,7 @@ const {
   focusedStageId,
   focusedAgentId,
   mobileNavOpen,
+  sidebarCollapsed,
   forms,
   pipelines,
 } = toRefs(state);
@@ -732,13 +734,24 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="app-shell">
+  <div :class="['app-shell', { 'sidebar-collapsed': sidebarCollapsed }]">
     <aside :class="['sidebar', { open: mobileNavOpen }]">
       <div class="brand-block">
-        <div>
+        <div class="brand-mark">
+          <span>MS</span>
+        </div>
+        <div class="brand-copy">
           <p class="brand-kicker">AgentTeam</p>
           <h1>MATRIX STUDIO</h1>
         </div>
+        <button
+          class="sidebar-toggle"
+          type="button"
+          :aria-label="sidebarCollapsed ? '展开菜单' : '收起菜单'"
+          @click="sidebarCollapsed = !sidebarCollapsed"
+        >
+          {{ sidebarCollapsed ? "›" : "‹" }}
+        </button>
         <button class="sidebar-close" type="button" @click="mobileNavOpen = false">关闭</button>
       </div>
 
@@ -776,6 +789,7 @@ onMounted(() => {
           <div>
             <p class="header-kicker">Pipeline Studio</p>
             <h2>{{ currentMenuLabel }}</h2>
+            <p class="header-subtitle">点击左侧菜单切换模块，画布阶段和 Agent 卡片可直接编辑。</p>
           </div>
           <div class="pipeline-pill">
             <span>当前流水线</span>
@@ -784,24 +798,23 @@ onMounted(() => {
         </div>
 
         <div class="header-actions">
-          <div class="interaction-hint">
-            可点击：左侧菜单、顶部操作按钮、画布阶段/Agent 卡片
-          </div>
-          <div class="header-stat">
-            <span>阶段</span>
-            <strong>{{ stageStats.stageCount }}</strong>
-          </div>
-          <div class="header-stat">
-            <span>Agent</span>
-            <strong>{{ stageStats.agentCount }}</strong>
-          </div>
-          <div class="header-stat">
-            <span>Skill</span>
-            <strong>{{ stageStats.skillCount }}</strong>
-          </div>
-          <div class="header-stat">
-            <span>Depth</span>
-            <strong>{{ stageStats.depth }}</strong>
+          <div class="header-metrics">
+            <div class="header-stat">
+              <span>阶段</span>
+              <strong>{{ stageStats.stageCount }}</strong>
+            </div>
+            <div class="header-stat">
+              <span>Agent</span>
+              <strong>{{ stageStats.agentCount }}</strong>
+            </div>
+            <div class="header-stat">
+              <span>Skill</span>
+              <strong>{{ stageStats.skillCount }}</strong>
+            </div>
+            <div class="header-stat">
+              <span>Depth</span>
+              <strong>{{ stageStats.depth }}</strong>
+            </div>
           </div>
           <button class="primary-button" type="button" :disabled="runStarting" @click="startRun">
             {{ runStarting ? "启动中..." : "运行流程" }}
