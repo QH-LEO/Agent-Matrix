@@ -497,13 +497,21 @@ async function loadDefinition() {
     const response = await fetch(`${API_BASE}/api/definition`);
     if (!response.ok) return;
     const definition = await response.json();
-    if (!definition?.pipeline) return;
-    state.pipelines = normalizePipelines([definition.pipeline]);
-    state.selectedPipelineId = definition.pipeline.id;
-    state.focusedStageId = definition.pipeline.stages[0]?.id ?? "";
-    state.focusedAgentId = definition.pipeline.stages[0]?.agents[0]?.id ?? "";
-    state.forms.projectPath = definition.pipeline.projectPath || DEFAULT_PROJECT_PATH;
-    lastAction.value = "已加载结构化流水线定义";
+    const loadedPipelines = Array.isArray(definition?.pipelines)
+      ? definition.pipelines
+      : definition?.pipeline
+        ? [definition.pipeline]
+        : [];
+    if (!loadedPipelines.length) return;
+
+    state.pipelines = normalizePipelines(loadedPipelines);
+    const selectedId = definition.selectedPipelineId || definition.pipeline?.id || state.pipelines[0]?.id || "";
+    const selected = state.pipelines.find((pipeline) => pipeline.id === selectedId) || state.pipelines[0];
+    state.selectedPipelineId = selected?.id || "";
+    state.focusedStageId = selected?.stages[0]?.id ?? "";
+    state.focusedAgentId = selected?.stages[0]?.agents[0]?.id ?? "";
+    state.forms.projectPath = selected?.projectPath || DEFAULT_PROJECT_PATH;
+    lastAction.value = `已加载 ${state.pipelines.length} 条结构化流水线定义`;
   } catch {
     lastAction.value = "未连接 orchestrator，使用浏览器本地配置";
   }
@@ -545,7 +553,7 @@ async function confirmSyncDefinition() {
   try {
     const payload = await savePipelineDefinition(selectedPipeline.value);
     definitionPreview.value = null;
-    lastAction.value = `已同步 DSL，并生成 ${payload.generatedAgents?.length || 0} 个 Claude agent 文件`;
+    lastAction.value = `已保存 ${payload.definition?.pipelines?.length || state.pipelines.length} 条流水线，并生成 ${payload.generatedAgents?.length || 0} 个 Claude agent 文件`;
     await loadAvailableAgents();
   } catch (error) {
     lastAction.value = error.message;
@@ -632,7 +640,11 @@ async function savePipelineDefinition(pipeline) {
   const response = await fetch(`${API_BASE}/api/definition`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pipeline: clonePipelines([pipeline])[0] }),
+    body: JSON.stringify({
+      pipeline: clonePipelines([pipeline])[0],
+      pipelines: clonePipelines(state.pipelines),
+      selectedPipelineId: state.selectedPipelineId,
+    }),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {

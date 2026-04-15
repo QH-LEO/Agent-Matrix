@@ -81,13 +81,12 @@ app.post("/api/definition/preview", (req, res) => {
 });
 
 app.post("/api/definition", (req, res) => {
-  const pipeline = normalizePipeline(req.body?.pipeline);
-  if (!pipeline) {
+  const definition = normalizeDefinitionRequest(req.body);
+  if (!definition.pipeline) {
     res.status(400).json({ error: "pipeline is required" });
     return;
   }
 
-  const definition = { version: 1, pipeline };
   fs.mkdirSync(path.dirname(DEFINITION_PATH), { recursive: true });
   fs.writeFileSync(DEFINITION_PATH, `${JSON.stringify(definition, null, 2)}\n`);
   const generatedAgents = writeClaudeAgents(definition);
@@ -293,6 +292,40 @@ function normalizePipeline(value) {
   };
 }
 
+function normalizeDefinitionRequest(value = {}) {
+  const existingDefinition = readDefinition() || { version: 2, pipelines: [], selectedPipelineId: "" };
+  const existingPipelines = Array.isArray(existingDefinition.pipelines)
+    ? existingDefinition.pipelines
+    : existingDefinition.pipeline
+      ? [existingDefinition.pipeline]
+      : [];
+  const requestPipelines = Array.isArray(value.pipelines)
+    ? value.pipelines
+    : existingPipelines;
+  const normalizedPipelines = requestPipelines.map(normalizePipeline).filter(Boolean);
+  const selectedPipeline = normalizePipeline(value.pipeline);
+
+  if (selectedPipeline) {
+    const index = normalizedPipelines.findIndex((pipeline) => pipeline.id === selectedPipeline.id);
+    if (index >= 0) {
+      normalizedPipelines[index] = selectedPipeline;
+    } else {
+      normalizedPipelines.push(selectedPipeline);
+    }
+  }
+
+  const selectedPipelineId = String(value.selectedPipelineId || selectedPipeline?.id || normalizedPipelines[0]?.id || "");
+  const currentPipeline =
+    normalizedPipelines.find((pipeline) => pipeline.id === selectedPipelineId) || normalizedPipelines[0] || null;
+
+  return {
+    version: 2,
+    selectedPipelineId: currentPipeline?.id || "",
+    pipelines: normalizedPipelines,
+    pipeline: currentPipeline,
+  };
+}
+
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
@@ -444,7 +477,26 @@ function listClaudeAgents() {
 
 function readDefinition() {
   if (!fs.existsSync(DEFINITION_PATH)) return null;
-  return JSON.parse(fs.readFileSync(DEFINITION_PATH, "utf8"));
+  const definition = JSON.parse(fs.readFileSync(DEFINITION_PATH, "utf8"));
+  return normalizeStoredDefinition(definition);
+}
+
+function normalizeStoredDefinition(definition) {
+  const pipelines = Array.isArray(definition?.pipelines)
+    ? definition.pipelines.map(normalizePipeline).filter(Boolean)
+    : definition?.pipeline
+      ? [normalizePipeline(definition.pipeline)].filter(Boolean)
+      : [];
+  const selectedPipelineId = String(definition?.selectedPipelineId || definition?.pipeline?.id || pipelines[0]?.id || "");
+  const currentPipeline =
+    pipelines.find((pipeline) => pipeline.id === selectedPipelineId) || pipelines[0] || null;
+
+  return {
+    version: 2,
+    selectedPipelineId: currentPipeline?.id || "",
+    pipelines,
+    pipeline: currentPipeline,
+  };
 }
 
 function writeClaudeAgents(definition) {
