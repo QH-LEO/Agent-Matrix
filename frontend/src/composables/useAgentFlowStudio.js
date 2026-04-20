@@ -2,6 +2,7 @@ import { computed, onMounted, reactive, ref, toRefs, watch } from "vue";
 import { apiGet, apiPost, clonePayload } from "../lib/api.js";
 
 const DEFAULT_PROJECT_PATH = ".";
+const EMPTY_PROJECT_PATH = "";
 const DEFAULT_CLAUDE_DIR = "~/.claude";
 
 const approvalOptions = [
@@ -151,7 +152,7 @@ export function useAgentFlowStudio() {
     forms: {
       pipelineName: "",
       leaderAgentName: "",
-      projectPath: DEFAULT_PROJECT_PATH,
+      projectPath: EMPTY_PROJECT_PATH,
       claudeDir: DEFAULT_CLAUDE_DIR,
       sharedAgentsDir: defaultSharedAgentsDir(DEFAULT_CLAUDE_DIR),
       stageName: "",
@@ -290,7 +291,7 @@ export function useAgentFlowStudio() {
     selectedPipeline,
     (pipeline) => {
       syncFocusForPipeline(state, pipeline);
-      state.forms.projectPath = pipeline?.projectPath || DEFAULT_PROJECT_PATH;
+      state.forms.projectPath = projectPathFieldValue(pipeline?.projectPath);
       state.forms.claudeDir = pipeline?.claudeDir || DEFAULT_CLAUDE_DIR;
       state.forms.sharedAgentsDir = pipeline?.sharedAgentsDir || defaultSharedAgentsDir(pipeline?.claudeDir || DEFAULT_CLAUDE_DIR);
     },
@@ -352,7 +353,7 @@ export function useAgentFlowStudio() {
     state.focusedAgentId = "";
     state.forms.pipelineName = "";
     state.forms.leaderAgentName = "";
-    state.forms.projectPath = pipeline.projectPath;
+    state.forms.projectPath = projectPathFieldValue(pipeline.projectPath);
     state.forms.claudeDir = pipeline.claudeDir;
     state.forms.sharedAgentsDir = pipeline.sharedAgentsDir;
     state.forms.stageName = "";
@@ -373,7 +374,7 @@ export function useAgentFlowStudio() {
     if (!state.pipelines.length) {
       state.selectedPipelineId = "";
       syncFocusForPipeline(state, null);
-      state.forms.projectPath = DEFAULT_PROJECT_PATH;
+      state.forms.projectPath = EMPTY_PROJECT_PATH;
       state.forms.claudeDir = DEFAULT_CLAUDE_DIR;
       state.forms.sharedAgentsDir = defaultSharedAgentsDir(DEFAULT_CLAUDE_DIR);
       lastAction.value = `已删除流水线：${pipeline.name}`;
@@ -679,11 +680,11 @@ export function useAgentFlowStudio() {
       }
     }
     if (key === "projectPath") {
-      selectedPipeline.value[key] = value || DEFAULT_PROJECT_PATH;
+      selectedPipeline.value[key] = value;
     } else if (key === "claudeDir") {
-      selectedPipeline.value[key] = value || DEFAULT_CLAUDE_DIR;
+      selectedPipeline.value[key] = value;
     } else if (key === "sharedAgentsDir") {
-      selectedPipeline.value[key] = value || defaultSharedAgentsDir(selectedPipeline.value.claudeDir || DEFAULT_CLAUDE_DIR);
+      selectedPipeline.value[key] = value;
     } else {
       selectedPipeline.value[key] = value;
     }
@@ -826,7 +827,7 @@ export function useAgentFlowStudio() {
       const selected = state.pipelines.find((pipeline) => pipeline.id === selectedId) || state.pipelines[0];
       state.selectedPipelineId = selected?.id || "";
       syncFocusForPipeline(state, selected);
-      state.forms.projectPath = selected?.projectPath || DEFAULT_PROJECT_PATH;
+      state.forms.projectPath = projectPathFieldValue(selected?.projectPath);
       lastAction.value = `已加载 ${state.pipelines.length} 条 DSL v3 流水线定义`;
     } catch {
       lastAction.value = "未连接 orchestrator，使用浏览器本地配置";
@@ -1410,6 +1411,10 @@ function pipelineFieldLabel(key) {
 
 function defaultSharedAgentsDir(claudeDir) {
   return `${String(claudeDir || DEFAULT_CLAUDE_DIR).replace(/\/+$/, "")}/agents`;
+}
+
+function projectPathFieldValue(value) {
+  return value && value !== DEFAULT_PROJECT_PATH ? value : EMPTY_PROJECT_PATH;
 }
 
 function inferWatchForStage(pipeline, stage) {

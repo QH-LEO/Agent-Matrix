@@ -1,9 +1,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { normalizeStoredDefinition } from "./schema.js";
 
-export const PROJECT_ROOT = path.resolve(process.cwd(), "..");
+const STORAGE_FILE = fileURLToPath(import.meta.url);
+const ORCHESTRATOR_ROOT = path.resolve(path.dirname(STORAGE_FILE), "..");
+
+export const PROJECT_ROOT = path.resolve(ORCHESTRATOR_ROOT, "..");
 export const DEFINITION_PATH = path.join(PROJECT_ROOT, "configs", "agentflow.pipeline.json");
 export const HOME_DIR = os.homedir();
 export const DEFAULT_CLAUDE_DIR = path.join(HOME_DIR, ".claude");

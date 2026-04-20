@@ -1,4 +1,12 @@
 <script setup>
+function displayProjectPath(value) {
+  return value === "." ? "" : value || "";
+}
+
+function projectPathLabel(value) {
+  return value && value !== "." ? value : "当前工程目录";
+}
+
 defineProps({
   selectedPipeline: { type: Object, default: null },
   pipelines: { type: Array, required: true },
@@ -50,7 +58,7 @@ defineEmits([
       <input
         v-model="forms.projectPath"
         type="text"
-        placeholder="项目地址，默认当前工程目录，例如：. 或 /path/to/project"
+        placeholder="项目地址，留空表示当前工程目录，例如：/path/to/project"
       />
       <input
         v-model="forms.claudeDir"
@@ -79,7 +87,7 @@ defineEmits([
         <strong>{{ pipeline.name }}</strong>
         <span>Stages: {{ pipeline.stages.length }} · Actions: {{ pipeline.sop?.stages?.reduce((total, stage) => total + stage.actions.length, 0) || 0 }}</span>
         <span>Leader: {{ pipeline.leaderAgentName }}</span>
-        <span>{{ pipeline.projectPath }}</span>
+        <span>{{ projectPathLabel(pipeline.projectPath) }}</span>
         <span>{{ pipeline.claudeDir }}</span>
         <span>{{ pipeline.sharedAgentsDir }}</span>
       </button>
@@ -104,9 +112,9 @@ defineEmits([
           @input="$emit('set-pipeline-field', 'leaderAgentName', $event.target.value)"
         />
         <input
-          :value="selectedPipeline.projectPath"
+          :value="displayProjectPath(selectedPipeline.projectPath)"
           type="text"
-          placeholder="项目地址"
+          placeholder="项目地址，留空表示当前工程目录"
           @input="$emit('set-pipeline-field', 'projectPath', $event.target.value)"
         />
         <input
