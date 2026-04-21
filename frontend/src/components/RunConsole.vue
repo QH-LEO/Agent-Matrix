@@ -62,8 +62,8 @@ defineEmits([
         <p class="run-panel-label">启动预览</p>
         <h3>打开 iTerm2 并通过主会话拉起 Claude Team Leader</h3>
         <p>
-          系统会在 iTerm2 中进入项目目录，然后执行
-          <code>claude &lt;launch prompt&gt;</code>。
+          系统会先生成 launch prompt 和启动脚本，再让 iTerm2 执行
+          <code>bash launch.sh</code>。
           launch prompt 的首行会显式调用
           <code>@"{{ currentRun?.pipeline?.leaderAgentName }} (agent)"</code>，
           由主会话先做 live handoff，而不是直接把会话伪装成 leader。
@@ -131,7 +131,7 @@ defineEmits([
           {{ launchingITerm ? "启动中..." : "一键启动" }}
         </button>
         <div class="requirement-tip">
-          需求会作为 Claude 启动 prompt 的一部分传入 iTerm2；如需先查看最终 prompt，可在左侧刷新预览。
+          需求会写入 Claude 启动 prompt 临时文件；如需先查看最终 prompt，可在左侧刷新预览。
         </div>
       </aside>
     </div>

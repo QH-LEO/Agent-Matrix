@@ -304,13 +304,14 @@ export function buildLaunchPrompt({
   launchMode = "single-leader",
   runId = "",
   projectRoot,
+  promptFilePath = "",
 }) {
   const pipeline = normalizePipeline(rawPipeline);
   const mode = normalizeLaunchMode(launchMode);
   const leaderAgentName = pipeline.leaderAgentName || toLeaderAgentName(pipeline.name);
   const resolvedProjectPath = resolveProjectPath(pipeline.projectPath, projectRoot);
-  const prompt = renderLaunchPrompt(pipeline, requirement, mode, resolvedProjectPath);
-  const command = buildLaunchCommand(pipeline, prompt, leaderAgentName, runId, resolvedProjectPath);
+  const prompt = renderLaunchPrompt(pipeline, requirement, mode, resolvedProjectPath, runId);
+  const command = buildLaunchCommand(pipeline, prompt, leaderAgentName, runId, resolvedProjectPath, promptFilePath);
 
   return {
     leaderAgentName,
@@ -330,6 +331,7 @@ export function renderTeamLeaderAgent(pipeline) {
   const gateProtocol = renderGateProtocolBulletList();
   const gateMatrix = renderGateMatrix(pipeline);
   const recursiveProtocol = renderRecursiveDelegationProtocol(pipeline);
+  const teamLifecycleRules = renderTeamLifecycleRules("compiled");
 
   return `---
 name: ${leaderAgentName}
@@ -367,16 +369,19 @@ Execution rules:
 - Shared agents are referenced by name and must not be rewritten by this pipeline.
 - Apply delegationPolicy strictly: start simple, escalate only when the rules justify it.
 - Claude Code agent teams are experimental and do not support nested teams; recursive delegation must be coordinated by you.
-- If launch mode or user instruction is force-team, create or attach live team context before deep analysis whenever runtime supports it.
+- Only create or attach live team context when launch mode or user instruction is force-team, or when the current main session explicitly approves escalation to team.
 - Never exceed maxDepth or maxParallelAgents. If deeper delegation is needed, ask the user first.
 - Treat all configured gates with enforcement=block as blocking controls, not soft reminders.
 - Treat each stage boundary as a review gate.
 - Keep decisions, risks, artifacts, and next steps traceable.
 - Do not simulate delegation in force-team mode or after an explicit live leader invocation unless the user explicitly approves fallback.
-- If runtime handoff fails because the team context does not exist, bootstrap the team context first (for example via spawnTeam when available), then retry the same live invocation.
+- If runtime handoff fails because a team context is missing, bootstrap a team only in force-team mode; otherwise retry plain live leader handoff without team context and ask before escalating.
 - Only use simulated delegation when live startup is unavailable and the user has explicitly approved fallback.
 - When delegating to shared agents, include the exact action contract, gate contract, and recursive delegation contract in the delegated brief.
 - Execute using-agentflow, gate handling, and stage orchestration after live handoff/team startup, not as a replacement for it.
+
+Team lifecycle rules:
+${teamLifecycleRules}
 
 Recursive delegation protocol:
 ${recursiveProtocol}
@@ -497,6 +502,7 @@ export function renderDelegationPolicyMarkdown(pipeline) {
   const policy = pipeline.delegationPolicy;
   const leaderAgentName = pipeline.leaderAgentName || toLeaderAgentName(pipeline.name);
   const recursiveProtocol = renderRecursiveDelegationProtocol(pipeline);
+  const teamLifecycleRules = renderTeamLifecycleRules("compiled");
   return `# ${pipeline.name} Delegation Policy
 
 - Default mode: ${policy.defaultMode}
@@ -534,9 +540,16 @@ ${recursiveProtocol}
 - When the user explicitly invokes ${formatLiveAgentHandle(leaderAgentName)}, treat that invocation as the highest-priority runtime action.
 - Do not perform repository analysis, workflow execution, gate handling, or simulation in the main session before the live handoff attempt.
 - In force-team mode, do not replace live startup with simulated delegation unless the user explicitly approves fallback.
-- If runtime returns a recoverable team-not-found style error, bootstrap the team context first, then retry the same live invocation.
+- Bootstrap or attach a team only in force-team mode, or after explicit user approval to escalate from suggest-team.
+- In single-leader mode, do not create, attach, or reuse a team; the leader must reply directly to the current main session.
+- In suggest-team mode, evaluate whether team is needed, but ask the current main session before creating one.
+- If runtime returns a recoverable team-not-found style error outside force-team, treat it as stale/wrong team routing and retry plain leader handoff instead of bootstrapping a team.
 - Any action-level gate with enforcement=block is blocking: request the required executor decision, wait, then continue.
 - Shared agents are read-only references, so the Team Leader must paste the relevant gate contract into delegated prompts.
+
+## Team Lifecycle Rules
+
+${teamLifecycleRules}
 `;
 }
 
@@ -544,6 +557,7 @@ export function renderUsingAgentFlowSkill(pipeline) {
   const leaderAgentName = pipeline.leaderAgentName || toLeaderAgentName(pipeline.name);
   const recursiveProtocol = renderRecursiveDelegationProtocol(pipeline);
   const knowledgeInstructions = renderUsingAgentFlowKnowledgeInstructions(pipeline);
+  const teamLifecycleRules = renderTeamLifecycleRules("compiled");
   return `---
 name: using-agentflow
 description: Use when starting or executing any AgentFlow-managed pipeline. Loads the pipeline SOP, delegation policy, quality gates, knowledge wiki, and role routing rules before work begins.
@@ -576,8 +590,15 @@ Important:
 - Managed agents may be regenerated by AgentFlow.
 - Claude Code agent teams are experimental and do not support nested teams.
 - If the request arrived via an explicit live handle such as ${formatLiveAgentHandle(leaderAgentName)}, preserve the handoff-first behavior and do not downgrade to simulation without explicit approval.
+- In single-leader mode, do not create, attach, or reuse a team. Reply through the current main session.
+- In suggest-team mode, evaluate whether a team is needed but ask the current main session before creating one.
+- In force-team mode, use a fresh run-scoped team whenever possible; do not silently reuse stale teams.
 - Gates are blocking controls, not reminders.
 - If the user requirement is unclear, ask before delegating.
+
+Team lifecycle:
+
+${teamLifecycleRules}
 
 Recursive delegation:
 
@@ -874,13 +895,14 @@ function slugifyForTag(value) {
     .replace(/^-+|-+$/g, "") || "";
 }
 
-function renderLaunchPrompt(pipeline, requirement, launchMode, resolvedProjectPath) {
+function renderLaunchPrompt(pipeline, requirement, launchMode, resolvedProjectPath, runId = "") {
   const leaderAgentName = pipeline.leaderAgentName || toLeaderAgentName(pipeline.name);
   const agents = pipeline.stages
     .flatMap((stage) => stage.agents.map((agent) => `- @${agent.agentName} (${agent.name})：${agent.responsibility || agent.description}`))
     .join("\n") || "- 暂无配置 Agent";
   const liveHandle = formatLiveAgentHandle(leaderAgentName);
   const modeInstruction = buildModeInstruction(launchMode, pipeline);
+  const teamLifecycleRules = renderTeamLifecycleRules(launchMode, pipeline, runId, resolvedProjectPath);
 
   return `${liveHandle} ${buildInvocationDirective(launchMode)}
 
@@ -890,10 +912,12 @@ ${requirement || "用户尚未填写需求，请先询问用户要实现什么�
 Main session handoff rules:
 1. 上面的 ${liveHandle} 是本轮最高优先级动作，必须先执行 live agent handoff。
 2. 在 handoff 尝试之前，主会话不得做仓库分析、workflow 执行、gate 处理、计划拆解或 delegation simulation。
-3. 如果 runtime 返回 team 不存在或 team context 缺失，先初始化/补齐 team（例如 spawnTeam，如果可用），再重试同一个 ${liveHandle} 调用。
-4. 如果本轮是 force-team，严禁用主会话模拟 delegation 替代 live team；只有用户明确同意 fallback 才能降级。
-5. using-agentflow、阶段判断、gate、team orchestration 必须由 handoff 成功后的 leader agent 执行，而不是由主会话预先执行。
-6. 你的第一段非空输出必须是实际的 handoff 动作或 handoff 尝试结果，不要先输出分析说明。
+3. 如果本轮不是 force-team，禁止创建、attach 或复用任何 Claude Code team，禁止走旧 team inbox；Leader 必须直接回复当前主会话。
+4. 只有 force-team 模式才允许 bootstrap live team；如果 team context 缺失，只能在 force-team 下创建当前 run 专属 team 后重试。
+5. 如果 single-leader/suggest-team 模式出现 team-not-found、leadSessionId、cwd 或 inbox 相关错误，把它视为旧 team 路由污染，退回普通 live leader handoff，不要自动 spawnTeam。
+6. 如果本轮是 force-team，严禁用主会话模拟 delegation 替代 live team；只有用户明确同意 fallback 才能降级。
+7. using-agentflow、阶段判断、gate、team orchestration 必须由 handoff 成功后的 leader agent 执行，而不是由主会话预先执行。
+8. 你的第一段非空输出必须是实际的 handoff 动作或 handoff 尝试结果，不要先输出分析说明。
 
 Invoked leader context:
 - AgentFlow pipeline: ${pipeline.name}
@@ -904,6 +928,9 @@ ${resolvedProjectPath}
 
 启动模式：
 ${launchMode}
+
+Team lifecycle:
+${teamLifecycleRules}
 
 ${modeInstruction}
 
@@ -934,12 +961,15 @@ ${renderRunSummary(pipeline, resolvedProjectPath)}
 }
 
 function buildModeInstruction(launchMode, pipeline) {
+  const teamName = recommendedTeamName(pipeline);
   if (launchMode === "force-team") {
     return `请以 force-team 模式执行本需求。
 
 要求：
 - 第一动作是完成 ${formatLiveAgentHandle(pipeline.leaderAgentName || toLeaderAgentName(pipeline.name))} 的 live handoff，而不是主会话分析。
-- 如果 team context 不存在，先初始化 team，再重试同一个 live invocation。
+- 如果 team context 不存在，创建当前 run 专属 team，再重试同一个 live invocation。
+- 推荐 team name 前缀：${teamName}。
+- 不要复用 leadSessionId/cwd 不匹配的旧 team；如果无法验证当前 session 绑定关系，直接新建 run-scoped team。
 - 由你作为 team lead 维护任务列表。
 - 团队成员应优先从当前流水线 Agent 中选择。
 - 每个 teammate 必须拥有清晰写入边界。
@@ -951,25 +981,90 @@ function buildModeInstruction(launchMode, pipeline) {
   if (launchMode === "suggest-team") {
     return `请在 live handoff 成功后评估是否需要创建 Claude Code agent team。
 
-如果任务跨产品、架构、研发、测试，或需要多角色讨论，请先说明理由并建议启动 team；如果任务可单点完成，则保持 single leader 或 subagent 模式。
-如果 runtime 因 team context 缺失导致 handoff 失败，请先初始化 team context 再继续。`;
+当前阶段不要自动创建、attach 或复用 team。
+如果任务跨产品、架构、研发、测试，或需要多角色讨论，请先说明理由并向当前主会话申请升级 team；用户批准后再创建 run-scoped team。
+如果任务可单点完成，则保持 single leader 或 subagent 模式。
+如果 runtime 因 team context 缺失导致 handoff 失败，请退回普通 live leader handoff，不要自动初始化 team context。`;
   }
 
   return `请默认以 single leader 模式开始，但仍然必须先完成 live handoff。
 
-只有当任务明确需要隔离探索、专项审查或跨角色协作时，才创建 subagent 或建议升级到 agent team。`;
+不要创建、attach 或复用任何 Claude Code team。
+不要使用 team inbox、team-lead.json 或旧 team context。
+只有当任务明确需要隔离探索、专项审查或跨角色协作时，才创建普通 subagent 或建议升级到 agent team；升级 team 前必须获得当前主会话批准。`;
 }
 
 function buildInvocationDirective(launchMode) {
   if (launchMode === "force-team") {
-    return "请以 force-team 模式接管以下任务，并在需要时启动 live team。";
+    return "请以 force-team 模式接管以下任务，并创建当前 run 专属 live team。";
   }
 
   if (launchMode === "suggest-team") {
-    return "请先接管以下任务，并在 handoff 后评估是否需要 live team。";
+    return "请先以普通 live leader 接管以下任务，并在 handoff 后评估是否需要申请 live team。";
   }
 
   return "请以 single-leader 模式先接管以下任务。";
+}
+
+function renderTeamLifecycleRules(launchMode, pipeline = {}, runId = "", resolvedProjectPath = "") {
+  const teamName = recommendedTeamName(pipeline, runId);
+  const projectLine = resolvedProjectPath ? `- Current project path: ${resolvedProjectPath}` : "";
+
+  if (launchMode === "force-team") {
+    return [
+      "- Mode: force-team. A live team is allowed and expected.",
+      `- Use a run-scoped team name whenever possible: ${teamName}.`,
+      projectLine,
+      "- Do not silently reuse an existing long-lived team if its leadSessionId, lead cwd, project path, or inbox subscription may belong to an old session.",
+      "- Before reusing a team, verify that the lead session is the current main session and that cwd matches the current project path.",
+      "- If verification is impossible or mismatched, create a fresh run-scoped team instead of attaching stale team context.",
+      "- The live leader must ensure replies are visible in the current main session, not only written to team-lead inbox.",
+      "- If a teammate reply lands in team-lead inbox but is not visible in the current chat, treat the team context as stale and report/recreate the team.",
+    ].filter(Boolean).join("\n");
+  }
+
+  if (launchMode === "suggest-team") {
+    return [
+      "- Mode: suggest-team. Start as plain live leader handoff, not as team.",
+      "- Do not create, attach, or reuse any Claude Code team before the current main session explicitly approves escalation.",
+      "- Do not use team inbox, team-lead.json, or old team context during the initial handoff.",
+      "- Evaluate whether team is needed after handoff; if needed, explain why and ask the current main session for approval.",
+      `- If approved, create a fresh run-scoped team such as: ${teamName}.`,
+      "- If runtime surfaces team-not-found, leadSessionId, cwd, or inbox errors before approval, treat that as stale team routing and retry plain live leader handoff.",
+    ].join("\n");
+  }
+
+  if (launchMode === "single-leader") {
+    return [
+      "- Mode: single-leader. This is plain live agent handoff only.",
+      "- Do not create, attach, or reuse any Claude Code team.",
+      "- Do not use team inbox, team-lead.json, or old team context.",
+      "- The invoked leader must reply directly in the current main session.",
+      "- If runtime surfaces team-not-found, leadSessionId, cwd, or inbox errors, treat that as stale team routing and retry plain live leader handoff.",
+    ].join("\n");
+  }
+
+  return [
+    "- Default lifecycle: plain live leader handoff is not the same as team mode.",
+    "- Create or attach a live team only for force-team or after explicit current-session approval.",
+    "- Prefer fresh run-scoped teams over long-lived reusable teams.",
+    "- Never silently reuse a team whose leadSessionId, cwd, or inbox subscription may point at an old session.",
+    "- In single-leader/suggest-team startup, the leader must reply directly to the current main session, not only to team-lead inbox.",
+  ].join("\n");
+}
+
+function recommendedTeamName(pipeline = {}, runId = "") {
+  const pipelineId = safeAsciiSlug(pipeline.id || pipeline.name || "pipeline");
+  const runPart = runId ? safeAsciiSlug(runId) : "<runId>";
+  return `agentflow-${pipelineId}-${runPart}`;
+}
+
+function safeAsciiSlug(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "pipeline";
 }
 
 function formatLiveAgentHandle(agentName) {
@@ -1539,7 +1634,8 @@ function inferGatePassCriteria(gate) {
   return "证据充分，风险可接受，下一步动作清楚。";
 }
 
-function buildLaunchCommand(pipeline, prompt, leaderAgentName, runId, resolvedProjectPath) {
+function buildLaunchCommand(pipeline, prompt, leaderAgentName, runId, resolvedProjectPath, promptFilePath = "") {
+  const promptArg = promptFilePath ? `"$(cat ${shellQuote(promptFilePath)})"` : shellQuote(prompt);
   return [
     `cd ${shellQuote(resolvedProjectPath)}`,
     "clear",
@@ -1547,7 +1643,8 @@ function buildLaunchCommand(pipeline, prompt, leaderAgentName, runId, resolvedPr
     runId ? `printf '%s\\n' ${shellQuote(`Run ID: ${runId}`)}` : "",
     `printf '%s\\n' ${shellQuote(`Project: ${resolvedProjectPath}`)}`,
     `printf '%s\\n' ${shellQuote(`Leader: ${formatLiveAgentHandle(leaderAgentName)}`)}`,
-    `claude ${shellQuote(prompt)}`,
+    promptFilePath ? `printf '%s\\n' ${shellQuote(`Prompt file: ${promptFilePath}`)}` : "",
+    `claude ${promptArg}`,
   ].filter(Boolean).join("; ");
 }
 

@@ -1,6 +1,7 @@
 import express from "express";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { buildCompilePlan, buildLaunchPrompt, lintDefinition } from "./compiler.js";
@@ -345,17 +346,30 @@ app.post("/api/runs/:runId/open-iterm", (req, res) => {
   run.requirement = requirement;
   run.launchMode = launchMode;
 
-  const { command, prompt } = buildLaunchPrompt({
+  const launch = buildLaunchPrompt({
     pipeline: run.pipeline,
     requirement,
     launchMode,
     runId: run.runId,
     projectRoot: getPaths().projectRoot,
   });
+  const promptFilePath = writeLaunchPromptFile(run.runId, launch.prompt);
+  const { command: launchCommand, prompt } = buildLaunchPrompt({
+    pipeline: run.pipeline,
+    requirement,
+    launchMode,
+    runId: run.runId,
+    projectRoot: getPaths().projectRoot,
+    promptFilePath,
+  });
+  const launchScriptPath = writeLaunchScriptFile(run.runId, launchCommand);
+  const command = `bash ${shellQuote(launchScriptPath)}`;
   const script = buildITermAppleScript(command);
   run.status = "opening";
   run.openingAt = new Date().toISOString();
   run.launchPrompt = prompt;
+  run.launchPromptPath = promptFilePath;
+  run.launchScriptPath = launchScriptPath;
 
   runAppleScript(script, 5000)
     .then(() => {
@@ -664,7 +678,7 @@ function buildITermAppleScript(command) {
 tell application "iTerm2"
   activate
   set newWindow to (create window with default profile)
-  delay 0.2
+  delay 0.5
   try
     set fullscreen of newWindow to true
   on error
@@ -676,12 +690,45 @@ tell application "iTerm2"
       end tell
     end try
   end try
-  delay 0.2
+  delay 0.5
   tell current session of newWindow
     write text ${appleScriptString(command)}
   end tell
 end tell
 `;
+}
+
+function writeLaunchPromptFile(runId, prompt) {
+  const dir = path.join(os.tmpdir(), "agentflow-platform", "runs", safePathSegment(runId));
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, "launch-prompt.md");
+  fs.writeFileSync(filePath, prompt, "utf8");
+  return filePath;
+}
+
+function writeLaunchScriptFile(runId, launchCommand) {
+  const dir = path.join(os.tmpdir(), "agentflow-platform", "runs", safePathSegment(runId));
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, "launch.sh");
+  const content = [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    launchCommand,
+    "",
+  ].join("\n");
+  fs.writeFileSync(filePath, content, { encoding: "utf8", mode: 0o700 });
+  fs.chmodSync(filePath, 0o700);
+  return filePath;
+}
+
+function safePathSegment(value) {
+  return String(value || "run")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "run";
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
 function runAppleScript(script, timeoutMs = 5000) {
