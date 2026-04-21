@@ -109,6 +109,7 @@ const defaultPipelines = [
     delegationPolicy: clonePayload(defaultDelegationPolicy),
     knowledgeBase: clonePayload(defaultKnowledgeBase),
     qualityGates: clonePayload(defaultQualityGates),
+    defaultSkills: [],
     stages: [
       {
         id: "s1",
@@ -194,6 +195,9 @@ export function useAgentFlowStudio() {
       skillName: "",
       skillVersion: "1.0.0",
       skillPath: "",
+      defaultSkillName: "",
+      defaultSkillVersion: "1.0.0",
+      defaultSkillPath: "",
     },
   });
 
@@ -293,7 +297,12 @@ export function useAgentFlowStudio() {
         summary.skillCount += stage.agents.reduce((total, agent) => total + agent.skills.length, 0);
         return summary;
       },
-      { stageCount: 0, agentCount: 0, skillCount: 0, actionCount: 0 }
+      {
+        stageCount: 0,
+        agentCount: 0,
+        skillCount: selectedPipeline.value.defaultSkills?.length || 0,
+        actionCount: 0,
+      }
     );
     summary.depth = selectedPipeline.value.delegationPolicy?.maxDepth ?? 1;
     return summary;
@@ -579,6 +588,48 @@ export function useAgentFlowStudio() {
     lastAction.value = `已删除 Agent：${agent.name}`;
   }
 
+  function addDefaultSkill() {
+    const pipeline = selectedPipeline.value;
+    if (!pipeline) return;
+
+    const path = state.forms.defaultSkillPath.trim();
+    const name = state.forms.defaultSkillName.trim() || skillNameFromPath(path);
+    if (!path) return;
+
+    pipeline.defaultSkills.push({
+      id: createId("sk"),
+      name,
+      version: state.forms.defaultSkillVersion.trim() || "1.0.0",
+      path,
+    });
+    state.forms.defaultSkillName = "";
+    state.forms.defaultSkillPath = "";
+    syncDerivedPipeline(pipeline);
+    lastAction.value = `已添加全局默认 Skill：${path}`;
+  }
+
+  function deleteDefaultSkill(skill) {
+    const pipeline = selectedPipeline.value;
+    if (!pipeline || !skill) return;
+
+    const index = pipeline.defaultSkills.findIndex((item) => item.id === skill.id);
+    if (index < 0) return;
+    if (!confirmDelete(`移除全局默认 Skill「${skill.name}」？不会删除磁盘目录。`)) return;
+
+    pipeline.defaultSkills.splice(index, 1);
+    syncDerivedPipeline(pipeline);
+    lastAction.value = `已移除全局默认 Skill：${skill.name}`;
+  }
+
+  function setDefaultSkillField(skill, key, value) {
+    const pipeline = selectedPipeline.value;
+    if (!pipeline || !skill) return;
+
+    updateSkillField(skill, key, value);
+    syncDerivedPipeline(pipeline);
+    lastAction.value = `已更新全局默认 Skill：${skill.name}`;
+  }
+
   function addSkill() {
     const pipeline = selectedPipeline.value;
     if (!pipeline || !state.forms.skillStageId || !state.forms.skillAgentId) return;
@@ -620,20 +671,7 @@ export function useAgentFlowStudio() {
     const agent = focusedAgent.value;
     if (!pipeline || !agent || !skill) return;
 
-    const nextValue = typeof value === "string" ? value.trim() : value;
-    if (key === "name") {
-      skill.name = nextValue || skillNameFromPath(skill.path) || "unnamed_skill";
-    } else if (key === "version") {
-      skill.version = nextValue || "latest";
-    } else if (key === "path") {
-      skill.path = nextValue || "";
-      if (!skill.name || skill.name === "unnamed_skill") {
-        skill.name = skillNameFromPath(skill.path) || "unnamed_skill";
-      }
-    } else {
-      skill[key] = nextValue;
-    }
-
+    updateSkillField(skill, key, value);
     syncDerivedPipeline(pipeline);
     lastAction.value = `已更新 Skill：${skill.name}`;
   }
@@ -1249,6 +1287,9 @@ export function useAgentFlowStudio() {
     moveStageToIndex,
     addAgent,
     deleteAgent,
+    addDefaultSkill,
+    setDefaultSkillField,
+    deleteDefaultSkill,
     addSkill,
     deleteSkill,
     setSkillField,
@@ -1371,6 +1412,7 @@ function normalizePipeline(pipeline) {
     delegationPolicy: normalizePolicy(pipeline.delegationPolicy),
     knowledgeBase: normalizeKnowledgeBase(pipeline.knowledgeBase, pipeline.name),
     qualityGates: normalizeQualityGates(pipeline.qualityGates, pipeline.delegationPolicy),
+    defaultSkills: normalizeSkills(pipeline.defaultSkills),
     stages: (pipeline.stages || []).map((stage, index) => normalizeStage(stage, index, pipeline.stages || [])),
   };
   syncDerivedPipeline(normalized);
@@ -1417,8 +1459,12 @@ function normalizeAgent(agent, stageName, defaultWatch) {
     tools: listOrDefault(agent.tools, ["Read", "Write", "Edit", "Grep", "Glob"]),
     watch,
     produce,
-    skills: (agent.skills || []).map((skill) => normalizeSkill(skill)),
+    skills: normalizeSkills(agent.skills),
   };
+}
+
+function normalizeSkills(skills) {
+  return Array.isArray(skills) ? skills.map((skill) => normalizeSkill(skill)) : [];
 }
 
 function normalizeSkill(skill) {
@@ -1431,6 +1477,22 @@ function normalizeSkill(skill) {
     version: skill.version || "latest",
     path,
   };
+}
+
+function updateSkillField(skill, key, value) {
+  const nextValue = typeof value === "string" ? value.trim() : value;
+  if (key === "name") {
+    skill.name = nextValue || skillNameFromPath(skill.path) || "unnamed_skill";
+  } else if (key === "version") {
+    skill.version = nextValue || "latest";
+  } else if (key === "path") {
+    skill.path = nextValue || "";
+    if (!skill.name || skill.name === "unnamed_skill") {
+      skill.name = skillNameFromPath(skill.path) || "unnamed_skill";
+    }
+  } else {
+    skill[key] = nextValue;
+  }
 }
 
 function syncDerivedPipeline(pipeline) {

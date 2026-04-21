@@ -184,6 +184,7 @@ export function normalizePipeline(value) {
     delegationPolicy,
     qualityGates,
     knowledgeBase,
+    defaultSkills: normalizeSkills(value.defaultSkills),
     stages,
   };
 
@@ -298,15 +299,19 @@ function normalizeAgent(agent, stageName, defaultWatch) {
     tools: normalizeStringList(agent.tools, ["Read", "Write", "Edit", "Grep", "Glob"]),
     watch: normalizeStringList(agent.watch, defaultWatch),
     produce,
-    skills: Array.isArray(agent.skills)
-      ? agent.skills.map((skill) => ({
-          id: String(skill.id || slugify(skill.name || skillNameFromPath(skill.path), "skill")),
-          name: String(skill.name || skillNameFromPath(skill.path) || "unnamed_skill"),
-          version: String(skill.version || "latest"),
-          path: String(skill.path || ""),
-        }))
-      : [],
+    skills: normalizeSkills(agent.skills),
   };
+}
+
+function normalizeSkills(skills) {
+  return Array.isArray(skills)
+    ? skills.map((skill) => ({
+        id: String(skill.id || slugify(skill.name || skillNameFromPath(skill.path), "skill")),
+        name: String(skill.name || skillNameFromPath(skill.path) || "unnamed_skill"),
+        version: String(skill.version || "latest"),
+        path: String(skill.path || ""),
+      }))
+    : [];
 }
 
 function normalizeAction(action, actionIndex, stageId, stageName, agents, defaultInputs) {

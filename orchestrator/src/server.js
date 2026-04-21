@@ -505,16 +505,19 @@ function buildPreflightChecks(pipeline) {
   const sharedAgents = pipeline.stages.flatMap((stage) =>
     stage.agents.filter((agent) => agent.source === "shared")
   );
-  const skillRefs = pipeline.stages.flatMap((stage) =>
-    stage.agents.flatMap((agent) =>
-      (agent.skills || [])
-        .filter((skill) => skill.path)
-        .map((skill) => ({
-          name: skill.name,
-          path: resolveSkillPath(resolvedProjectPath, skill.path),
-        }))
-    )
-  );
+  const skillRefs = [
+    ...(pipeline.defaultSkills || []).map((skill) => ({ ...skill, scope: "global" })),
+    ...pipeline.stages.flatMap((stage) =>
+      stage.agents.flatMap((agent) =>
+        (agent.skills || []).map((skill) => ({ ...skill, scope: `@${agent.agentName}` }))
+      )
+    ),
+  ]
+    .filter((skill) => skill.path)
+    .map((skill) => ({
+      name: skill.scope ? `${skill.name} (${skill.scope})` : skill.name,
+      path: resolveSkillPath(resolvedProjectPath, skill.path),
+    }));
   const missingSharedAgents = sharedAgents.filter((agent) => !fs.existsSync(getAgentPath(agent.agentName, sharedAgentsDir)));
   const missingSkillRefs = skillRefs.filter((skill) => !pathExistsDirectory(skill.path));
   const claudeBinary = findExecutable("claude", [

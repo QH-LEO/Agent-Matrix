@@ -35,6 +35,18 @@ const dragState = reactive({
 
 const pipelineEditable = computed(() => !props.readonly);
 
+function effectiveSkills(agent) {
+  const defaults = props.selectedPipeline?.defaultSkills || [];
+  const direct = agent.skills || [];
+  const seen = new Set();
+  return [...defaults, ...direct].filter((skill) => {
+    const key = skill.path || skill.name;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function onPointerDown(event) {
   if (!canvasRef.value) return;
   if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -251,10 +263,10 @@ function onStageDrop(index, event) {
                   <small>Produce: {{ agent.produce.join(", ") }}</small>
                 </div>
                 <div class="skill-tags">
-                  <span v-for="skill in agent.skills" :key="skill.id" class="skill-tag" :title="skill.path">
+                  <span v-for="skill in effectiveSkills(agent)" :key="skill.path || skill.id" class="skill-tag" :title="skill.path">
                     {{ skill.name }} v{{ skill.version }}
                   </span>
-                  <span v-if="!agent.skills.length" class="skill-placeholder">No Skills</span>
+                  <span v-if="!effectiveSkills(agent).length" class="skill-placeholder">No Skills</span>
                 </div>
               </article>
 

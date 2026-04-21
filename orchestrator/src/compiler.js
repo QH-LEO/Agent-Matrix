@@ -326,7 +326,12 @@ export function renderTeamLeaderAgent(pipeline) {
   const leaderAgentName = pipeline.leaderAgentName || toLeaderAgentName(pipeline.name);
   const agents = pipeline.stages.flatMap((stage) => stage.agents);
   const agentLines = agents.length
-    ? agents.map((agent) => `- @${agent.agentName} (${agent.name})：${agent.responsibility || agent.description}`).join("\n")
+    ? agents
+        .map((agent) => {
+          const skills = renderSkillSummary(effectiveAgentSkills(pipeline, agent));
+          return `- @${agent.agentName} (${agent.name})：${agent.responsibility || agent.description} | skills: ${skills}`;
+        })
+        .join("\n")
     : "- 暂无配置 Agent，必要时由 Leader 模拟阶段产出。";
   const gateProtocol = renderGateProtocolBulletList();
   const gateMatrix = renderGateMatrix(pipeline);
@@ -410,11 +415,10 @@ decision_needed: approve | reject
 }
 
 export function renderRoleAgent(pipeline, stage, agent) {
-  const skills = agent.skills?.length
-    ? agent.skills
-        .map((skill) => `- ${skill.name}@${skill.version}${skill.path ? ` (${skill.path})` : ""}`)
-        .join("\n")
-    : "- none";
+  const defaultSkills = pipeline.defaultSkills || [];
+  const skills = renderSkillLines(effectiveAgentSkills(pipeline, agent));
+  const inheritedSkills = renderSkillLines(defaultSkills);
+  const directSkills = renderSkillLines(agent.skills || []);
 
   return `---
 name: ${agent.agentName}
@@ -438,6 +442,12 @@ ${agent.produce.map((item) => `- ${item}`).join("\n")}
 
 Configured skills:
 ${skills}
+
+Inherited default skills:
+${inheritedSkills}
+
+Agent-specific skills:
+${directSkills}
 
 Assigned actions:
 ${renderRoleActionSummary(stage, agent)}
@@ -1071,11 +1081,36 @@ function formatLiveAgentHandle(agentName) {
   return `@"${agentName} (agent)"`;
 }
 
+function effectiveAgentSkills(pipeline, agent) {
+  const seen = new Set();
+  return [...(pipeline.defaultSkills || []), ...(agent.skills || [])].filter((skill) => {
+    const key = skill.path || skill.name;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function renderSkillLines(skills = []) {
+  return skills.length
+    ? skills.map((skill) => `- ${skill.name}@${skill.version}${skill.path ? ` (${skill.path})` : ""}`).join("\n")
+    : "- none";
+}
+
+function renderSkillSummary(skills = []) {
+  return skills.length
+    ? skills.map((skill) => `${skill.name}@${skill.version}${skill.path ? `:${skill.path}` : ""}`).join(", ")
+    : "none";
+}
+
 function renderRunSummary(pipeline, resolvedProjectPath = pipeline.projectPath) {
+  const defaultSkills = renderSkillSummary(pipeline.defaultSkills || []);
   const stages = pipeline.stages
     .map((stage, index) => {
       const agents = stage.agents.length
-        ? stage.agents.map((agent) => `    - @${agent.agentName}：${agent.produce.join(", ")}`).join("\n")
+        ? stage.agents
+            .map((agent) => `    - @${agent.agentName}：${agent.produce.join(", ")} | skills: ${renderSkillSummary(effectiveAgentSkills(pipeline, agent))}`)
+            .join("\n")
         : "    - no agents";
       const actions = stage.actions
         .map((action) => `    - ${action.name} -> ${action.outputs.join(", ")} | gates: ${renderGateReferenceList(pipeline, action.gates)}`)
@@ -1088,6 +1123,7 @@ function renderRunSummary(pipeline, resolvedProjectPath = pipeline.projectPath) 
     `Pipeline: ${pipeline.name}`,
     `Leader agent: @${pipeline.leaderAgentName || toLeaderAgentName(pipeline.name)}`,
     `Project: ${resolvedProjectPath}`,
+    `Default skills: ${defaultSkills}`,
     "",
     "Delegation policy:",
     JSON.stringify(pipeline.delegationPolicy, null, 2),
