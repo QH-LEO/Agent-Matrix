@@ -1,10 +1,10 @@
-# AgentFlow Platform
+# AgentMatrix
 
-AgentFlow Platform 是一个面向 Agent 协作的配置平台。
+AgentMatrix 是一个面向 Agent 协作的配置平台。
 
 它不重新实现 Agent runtime，也不替代 Claude Code / Codex 这类本地 Agent 工具。它解决的是另一件事：把团队的研发流程、角色分工、质量门禁、委托策略、知识库规则和 Skill 使用方式，配置成 Agent 能理解、能执行、能持续复用的项目上下文。
 
-换句话说，AgentFlow 让 Agent 不只是“拿到一个任务”，而是拿到一套被组织过的工作方式。
+换句话说，AgentMatrix 让 Agent 不只是“拿到一个任务”，而是拿到一套被组织过的工作方式。
 
 ## 它解决什么问题
 
@@ -18,7 +18,7 @@ AgentFlow Platform 是一个面向 Agent 协作的配置平台。
 - 不知道项目长期知识、历史决策、冲突和待确认问题在哪里。
 - 不知道写入前应该检查哪些路径、Agent、Skill 和配置。
 
-AgentFlow 的目标是把这些“团队规则”从口头约定变成可配置、可预览、可编译的 Agent 运行资产。
+AgentMatrix 的目标是把这些“团队规则”从口头约定变成可配置、可预览、可编译的 Agent 运行资产。
 
 ## 配置能力如何赋能 Agent
 
@@ -142,7 +142,7 @@ configs/agentflow.pipeline.json
 
 ```text
 .
-├── .agentflow/                 # 当前项目已编译的 AgentFlow 资产与 Wiki
+├── .agentflow/                 # 当前项目已编译的 AgentMatrix 资产与 Wiki
 ├── .claude/                    # 本项目生成的 Claude skill bootstrap
 ├── backend/                    # 后端预留目录，当前主要服务在 orchestrator/
 ├── configs/
@@ -210,7 +210,7 @@ http://localhost:5173
 - `.agentflow/compiled/gates.md` 和 `.agentflow/compiled/gates.json`：门禁计划。
 - `.agentflow/compiled/launch-prompt.md`：默认启动 Prompt。
 - `.agentflow/wiki/`：Knowledge Wiki seed 或已维护的 Wiki 结构。
-- `.claude/skills/using-agentflow/SKILL.md`：AgentFlow 运行协议 Skill。
+- `.claude/skills/using-agentflow/SKILL.md`：AgentMatrix 运行协议 Skill。
 - `~/.claude/agents/*.md`：Leader 和托管 Agent 文件。
 
 如果 `configs/agentflow.pipeline.json` 与 `.agentflow/compiled/*` 不一致，应以配置文件表达的最新意图为准，并记录配置与编译产物之间的漂移。
@@ -257,4 +257,3 @@ npm run build
 - 可追溯：重要变更应更新 `变更点审查.md`。
 - Knowledge Wiki raw 资料默认不可变，稳定结论应编译到 Wiki 页面。
 - 写入前先预览，确认产物边界后再执行编译写入。
-
