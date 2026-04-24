@@ -1,4 +1,4 @@
-# AgentFlow Runtime 与 LLM Wiki 组织说明
+# AgentFlow Runtime 组织说明
 
 本文说明当前仓库里 AgentFlow 是如何组织研发流程编排、Skill 装配、门禁、策略和 LLM Wiki 的，以及每个关键文件的作用。
 
