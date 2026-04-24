@@ -338,6 +338,7 @@ export function renderTeamLeaderAgent(pipeline) {
   const recursiveProtocol = renderRecursiveDelegationProtocol(pipeline);
   const teamLifecycleRules = renderTeamLifecycleRules("compiled");
   const handoffRoutingProtocol = renderLiveHandoffRoutingProtocol(leaderAgentName);
+  const artifactDisclosureProtocol = renderArtifactDisclosureProtocol();
 
   return `---
 name: ${leaderAgentName}
@@ -380,6 +381,7 @@ Execution rules:
 - Treat all configured gates with enforcement=block as blocking controls, not soft reminders.
 - Treat each stage boundary as a review gate.
 - Keep decisions, risks, artifacts, and next steps traceable.
+- Before asking the user to approve, reject, continue, or review a gate, show the produced artifacts by default using the artifact disclosure protocol below.
 - Do not simulate delegation in force-team mode or after an explicit live leader invocation unless the user explicitly approves fallback.
 - If runtime handoff fails because a team context is missing, bootstrap a team only in force-team mode; otherwise retry plain live leader handoff without team context and ask before escalating.
 - Only use simulated delegation when live startup is unavailable and the user has explicitly approved fallback.
@@ -388,6 +390,9 @@ Execution rules:
 
 Live handoff routing protocol:
 ${handoffRoutingProtocol}
+
+Artifact disclosure protocol:
+${artifactDisclosureProtocol}
 
 Team lifecycle rules:
 ${teamLifecycleRules}
@@ -413,6 +418,11 @@ owner: @<agent-name>
 evidence:
 - <artifact or decision>
 - <risk / assumption / validation result>
+artifacts:
+- name: <artifact name>
+  path: <file path or output path, if any>
+  status: <created | updated | unchanged | pending>
+  summary: <reviewable summary or excerpt>
 decision_needed: approve | reject
 reply_route: current live agent runtime id, not role name
 \`\`\`
@@ -579,6 +589,7 @@ export function renderUsingAgentFlowSkill(pipeline) {
   const knowledgeInstructions = renderUsingAgentFlowKnowledgeInstructions(pipeline);
   const teamLifecycleRules = renderTeamLifecycleRules("compiled");
   const handoffRoutingProtocol = renderLiveHandoffRoutingProtocol(leaderAgentName);
+  const artifactDisclosureProtocol = renderArtifactDisclosureProtocol();
   return `---
 name: using-agentflow
 description: Use when starting or executing any AgentFlow-managed pipeline. Loads the pipeline SOP, delegation policy, quality gates, knowledge wiki, and role routing rules before work begins.
@@ -599,7 +610,8 @@ Before taking action:
 7. Decide execution mode: self / subagent / parallel subagents / agent team / ask human.
 8. Use full @agent names when delegating.
 9. If a gate applies, emit a GATE_PENDING packet before execution and wait for the required executor decision.
-10. Record artifacts, risks, decisions, next steps, and any Knowledge Wiki update proposal.
+10. Before requesting approve/reject/review/continue, show produced artifacts by default using the artifact disclosure protocol below.
+11. Record artifacts, risks, decisions, next steps, and any Knowledge Wiki update proposal.
 
 Knowledge Wiki:
 
@@ -620,6 +632,10 @@ Important:
 Live handoff routing:
 
 ${handoffRoutingProtocol}
+
+Artifact disclosure:
+
+${artifactDisclosureProtocol}
 
 Team lifecycle:
 
@@ -929,6 +945,7 @@ function renderLaunchPrompt(pipeline, requirement, launchMode, resolvedProjectPa
   const modeInstruction = buildModeInstruction(launchMode, pipeline);
   const teamLifecycleRules = renderTeamLifecycleRules(launchMode, pipeline, runId, resolvedProjectPath);
   const handoffRoutingProtocol = renderLiveHandoffRoutingProtocol(leaderAgentName);
+  const artifactDisclosureProtocol = renderArtifactDisclosureProtocol();
 
   return `${liveHandle} ${buildInvocationDirective(launchMode)}
 
@@ -961,6 +978,9 @@ ${launchMode}
 Live handoff routing:
 ${handoffRoutingProtocol}
 
+Artifact disclosure:
+${artifactDisclosureProtocol}
+
 Team lifecycle:
 ${teamLifecycleRules}
 
@@ -975,7 +995,8 @@ Leader execution requirements after handoff:
 3. 先判断任务复杂度，再选择 self / subagent / parallel subagents / agent team。
 4. 委托时必须使用完整 @agent 名称。
 5. 门禁是阻断式控制，命中 block 级别门禁后必须先发起 GATE_PENDING，并按门禁放行方式等待批准、审查或检查结果。
-6. 输出阶段状态、产物、风险、下一步，以及 Knowledge Wiki 更新建议。
+6. 在请求用户 approve/reject/review/continue 之前，默认展示本阶段产出物；不要只说“已进入门禁”。
+7. 输出阶段状态、产物、风险、下一步，以及 Knowledge Wiki 更新建议。
 
 Knowledge Wiki:
 ${renderUsingAgentFlowKnowledgeInstructions(pipeline)}
@@ -1115,9 +1136,21 @@ function renderLiveHandoffRoutingProtocol(leaderAgentName) {
     "- Treat that runtime id as the reply route for this run. Store it with the pending gate state.",
     "- For every later user response such as approve, reject, continue, status, or a gate answer, send the message to the exact runtime agentId/taskId, not to the role name or live handle.",
     "- If the runtime says the agent has no active task, was stopped, or completed, resume the same runtime agentId/taskId from transcript and then deliver the user's exact gate response.",
+    "- When a resumed or completed runtime returns a gate, stage result, or output path, summarize the reviewable artifacts before asking the user for the next decision.",
     "- Do not tell the user that a gate approval was delivered until the runtime confirms the exact runtime id accepted/resumed the message.",
-    "- When a GATE_PENDING packet is shown to the user, include the gate id, requested decision, and the current runtime id if the main session has it.",
+    "- When a GATE_PENDING packet is shown to the user, include the gate id, requested decision, current runtime id if the main session has it, and the artifact list or artifact output path.",
     "- If routing by role name and routing by runtime id disagree, trust the runtime id.",
+  ].join("\n");
+}
+
+function renderArtifactDisclosureProtocol() {
+  return [
+    "- Default behavior: show artifacts before asking for approve, reject, review, or continue.",
+    "- If artifacts are files, include each path, changed/created/unchanged status when known, and a short reviewable summary or excerpt.",
+    "- If artifacts are only in the live runtime output, include the output path and summarize the concrete sections that the user must review.",
+    "- If an expected artifact is missing, say it is missing or pending and explain whether the gate can still be reviewed.",
+    "- Do not replace artifact disclosure with a generic status such as 'leader entered architecture-review'; that status may appear only after the artifacts are visible.",
+    "- Keep the decision prompt last so the user sees the evidence before the requested reply format.",
   ].join("\n");
 }
 
@@ -1227,6 +1260,7 @@ function buildGatePlan(pipeline) {
 
 function renderGatePlanMarkdown(pipeline) {
   const plan = buildGatePlan(pipeline);
+  const artifactDisclosureProtocol = renderArtifactDisclosureProtocol();
   const roleContracts = plan.roleGates
     .map((role) => {
       const actions = role.actions.length
@@ -1268,9 +1302,18 @@ owner: @<agent-name>
 evidence:
 - <artifact or decision>
 - <risk / assumption / validation result>
+artifacts:
+- name: <artifact name>
+  path: <file path or runtime output path, if any>
+  status: <created | updated | unchanged | pending>
+  summary: <reviewable summary or excerpt>
 decision_needed: approve | review | revise | reject
 reply_route: current live agent runtime id, not role name
 \`\`\`
+
+## Artifact Disclosure
+
+${artifactDisclosureProtocol}
 
 ## Quality Gate Definitions
 
@@ -1294,6 +1337,8 @@ function renderGateProtocolRules() {
   return [
     "Gates are blocking execution controls, not reminders.",
     "When an action hits a gate, surface GATE_PENDING with gate id, stage, action, owner, evidence, and requested decision.",
+    "Before requesting a gate decision from the user, disclose the produced artifacts by default: paths when available, status, and a reviewable summary or excerpt.",
+    "If no artifact exists yet, explicitly mark the expected artifact as missing or pending instead of asking for approval on an empty status update.",
     "For block gates, wait for the required release decision before continuing past the gate.",
     "For human_approval or human_review gates, wait for explicit human approval or review.",
     "For ai_review gates, produce the requested evidence, check it against pass criteria, and ask the human if the result is ambiguous or high risk.",

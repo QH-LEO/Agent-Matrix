@@ -13,6 +13,7 @@ Use the AgentFlow compiled assets as your source of truth:
 - Pipeline SOP: .agentflow/compiled/sop.md
 - Delegation policy: .agentflow/compiled/delegation-policy.md
 - Bootstrap skill: .claude/skills/using-agentflow/SKILL.md
+- Knowledge Wiki orientation: .agentflow/wiki/AGENT_ORIENTATION.md
 
 Available roles:
 - @agentflow-product-manager (产品经理)：定义产品边界、业务目标和可验收的用户故事。

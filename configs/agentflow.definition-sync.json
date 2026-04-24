@@ -1,0 +1,14 @@
+{
+  "pipelines": {
+    "p1": {
+      "source": "compile-apply",
+      "sourceKind": "last-written-snapshot",
+      "snapshotPath": "/Users/leo/.agentflow/compiled/definition.snapshot.json",
+      "sourcePath": "/Users/leo/.agentflow/compiled/definition.snapshot.json",
+      "projectPath": "/Users/leo",
+      "resolvedProjectPath": "/Users/leo",
+      "definitionPath": "/Users/leo/Projects/agentflow-platform/configs/agentflow.pipeline.json",
+      "updatedAt": "2026-04-21T08:29:32.830Z"
+    }
+  }
+}

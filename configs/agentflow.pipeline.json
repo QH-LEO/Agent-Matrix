@@ -6,7 +6,7 @@
       "id": "p1",
       "name": "核心研发流程",
       "leaderAgentName": "agentflow-core-rd-team-leader",
-      "projectPath": ".",
+      "projectPath": "/Users/leo",
       "claudeDir": "~/.claude",
       "sharedAgentsDir": "~/.claude/agents",
       "delegationPolicy": {
@@ -16,12 +16,7 @@
         "allowRecursiveDelegation": true,
         "maxDepth": 2,
         "maxParallelAgents": 4,
-        "requireHumanApprovalFor": [
-          "destructive-command",
-          "deployment",
-          "requirement-review",
-          "architecture-review"
-        ],
+        "requireHumanApprovalFor": [],
         "escalationRules": {
           "self": "任务小、路径清楚、上下文足够、单一产物时由当前 Agent 自己完成。",
           "subAgent": "子任务边界清楚、适合并行、需要隔离上下文或专业审查时创建 Sub Agent。",
@@ -34,38 +29,119 @@
           "id": "requirement-review",
           "name": "需求确认",
           "type": "human",
+          "domain": "requirement",
+          "trigger": "after_diff",
+          "executor": "human_approval",
+          "enforcement": "block",
           "required": true,
+          "evidence": [
+            "需求摘要与范围边界",
+            "验收标准",
+            "关键风险与待确认问题"
+          ],
+          "passCriteria": "需求边界、验收标准和关键风险已明确。",
+          "failAction": "revise",
           "description": "需求边界、验收标准和风险必须人工确认。"
         },
         {
           "id": "architecture-review",
           "name": "方案确认",
           "type": "human",
+          "domain": "architecture",
+          "trigger": "after_diff",
+          "executor": "human_approval",
+          "enforcement": "block",
           "required": true,
+          "evidence": [
+            "方案摘要与关键取舍",
+            "接口契约/数据流",
+            "测试策略与主要风险"
+          ],
+          "passCriteria": "方案、接口契约、技术取舍和验证路径已确认。",
+          "failAction": "revise",
           "description": "架构方案、接口契约和测试策略必须人工确认。"
         },
         {
           "id": "write-files",
           "name": "写文件前",
           "type": "human",
+          "domain": "code",
+          "trigger": "before_write",
+          "executor": "human_approval",
+          "enforcement": "block",
           "required": true,
+          "evidence": [
+            "拟修改文件列表",
+            "改动边界与影响面",
+            "验证方式与回滚预案"
+          ],
+          "passCriteria": "文件边界、影响面和验证方式已确认。",
+          "failAction": "revise",
           "description": "开始写入项目文件前需要确认改动边界。"
         },
         {
           "id": "completion-review",
           "name": "完成验收",
           "type": "human",
+          "domain": "test",
+          "trigger": "after_diff",
+          "executor": "human_approval",
+          "enforcement": "block",
           "required": true,
+          "evidence": [
+            "交付产物清单",
+            "验证结果",
+            "剩余风险与下一步"
+          ],
+          "passCriteria": "交付产物、验证结果和剩余风险已通过审查。",
+          "failAction": "revise",
           "description": "完成后必须回顾产物、测试和风险。"
         },
         {
           "id": "destructive-command",
           "name": "破坏性命令",
           "type": "human",
+          "domain": "security",
+          "trigger": "before_command",
+          "executor": "human_approval",
+          "enforcement": "block",
           "required": true,
+          "evidence": [
+            "即将执行的命令或操作",
+            "受影响资源",
+            "备份与回滚方案"
+          ],
+          "passCriteria": "操作必要性、影响面、备份与回滚方案已确认。",
+          "failAction": "revise",
           "description": "删除、重置、迁移等不可逆操作必须人工确认。"
+        },
+        {
+          "id": "deployment",
+          "name": "发布前确认",
+          "type": "human",
+          "domain": "architecture",
+          "trigger": "before_pr",
+          "executor": "human_approval",
+          "enforcement": "block",
+          "required": true,
+          "evidence": [
+            "方案摘要与关键取舍",
+            "接口契约/数据流",
+            "测试策略与主要风险"
+          ],
+          "passCriteria": "方案、接口契约、技术取舍和验证路径已确认。",
+          "failAction": "revise",
+          "description": "上线前必须人工确认发布范围、验证方式和回滚方案。"
         }
       ],
+      "knowledgeBase": {
+        "enabled": true,
+        "path": ".agentflow/wiki",
+        "domain": "核心研发流程 项目研发知识库",
+        "autoOrient": true,
+        "writeMode": "proposal_first",
+        "rawImmutable": true
+      },
       "stages": [
         {
           "id": "s1",
@@ -263,56 +339,6 @@
               ]
             }
           ]
-        },
-        {
-          "id": "s4",
-          "name": "测试验收",
-          "agents": [
-            {
-              "id": "a4",
-              "name": "测试工程师",
-              "agentName": "agentflow-tester",
-              "description": "Designs and runs validation for AgentFlow outputs, including acceptance checks, regression tests, and risk-focused review.",
-              "responsibility": "根据验收标准验证产物，输出风险、缺陷和回归测试建议。",
-              "source": "shared",
-              "model": "sonnet",
-              "tools": [
-                "Read",
-                "Write",
-                "Edit",
-                "Grep",
-                "Glob",
-                "Bash"
-              ],
-              "watch": [
-                "CodeChange",
-                "DevNotes"
-              ],
-              "produce": [
-                "TestReport",
-                "DefectList"
-              ],
-              "skills": []
-            }
-          ],
-          "actions": [
-            {
-              "id": "s4-action-1",
-              "name": "验证变更并形成测试报告",
-              "owner": "agentflow-tester",
-              "inputs": [
-                "CodeChange",
-                "DevNotes"
-              ],
-              "outputs": [
-                "TestReport",
-                "DefectList"
-              ],
-              "gates": [
-                "completion-review"
-              ]
-            }
-          ]
         }
       ],
       "organization": {
@@ -394,23 +420,6 @@
               "DevNotes"
             ],
             "responsibility": "按批准方案实现代码、保持小步提交、运行必要检查。"
-          },
-          {
-            "id": "a4",
-            "stageId": "s4",
-            "stageName": "测试验收",
-            "name": "测试工程师",
-            "agentName": "agentflow-tester",
-            "source": "shared",
-            "watch": [
-              "CodeChange",
-              "DevNotes"
-            ],
-            "produce": [
-              "TestReport",
-              "DefectList"
-            ],
-            "responsibility": "根据验收标准验证产物，输出风险、缺陷和回归测试建议。"
           }
         ]
       },
@@ -485,28 +494,6 @@
                 ]
               }
             ]
-          },
-          {
-            "id": "s4",
-            "name": "测试验收",
-            "actions": [
-              {
-                "id": "s4-action-1",
-                "name": "验证变更并形成测试报告",
-                "owner": "agentflow-tester",
-                "inputs": [
-                  "CodeChange",
-                  "DevNotes"
-                ],
-                "outputs": [
-                  "TestReport",
-                  "DefectList"
-                ],
-                "gates": [
-                  "completion-review"
-                ]
-              }
-            ]
           }
         ]
       }
@@ -516,7 +503,7 @@
     "id": "p1",
     "name": "核心研发流程",
     "leaderAgentName": "agentflow-core-rd-team-leader",
-    "projectPath": ".",
+    "projectPath": "/Users/leo",
     "claudeDir": "~/.claude",
     "sharedAgentsDir": "~/.claude/agents",
     "delegationPolicy": {
@@ -526,12 +513,7 @@
       "allowRecursiveDelegation": true,
       "maxDepth": 2,
       "maxParallelAgents": 4,
-      "requireHumanApprovalFor": [
-        "destructive-command",
-        "deployment",
-        "requirement-review",
-        "architecture-review"
-      ],
+      "requireHumanApprovalFor": [],
       "escalationRules": {
         "self": "任务小、路径清楚、上下文足够、单一产物时由当前 Agent 自己完成。",
         "subAgent": "子任务边界清楚、适合并行、需要隔离上下文或专业审查时创建 Sub Agent。",
@@ -544,38 +526,119 @@
         "id": "requirement-review",
         "name": "需求确认",
         "type": "human",
+        "domain": "requirement",
+        "trigger": "after_diff",
+        "executor": "human_approval",
+        "enforcement": "block",
         "required": true,
+        "evidence": [
+          "需求摘要与范围边界",
+          "验收标准",
+          "关键风险与待确认问题"
+        ],
+        "passCriteria": "需求边界、验收标准和关键风险已明确。",
+        "failAction": "revise",
         "description": "需求边界、验收标准和风险必须人工确认。"
       },
       {
         "id": "architecture-review",
         "name": "方案确认",
         "type": "human",
+        "domain": "architecture",
+        "trigger": "after_diff",
+        "executor": "human_approval",
+        "enforcement": "block",
         "required": true,
+        "evidence": [
+          "方案摘要与关键取舍",
+          "接口契约/数据流",
+          "测试策略与主要风险"
+        ],
+        "passCriteria": "方案、接口契约、技术取舍和验证路径已确认。",
+        "failAction": "revise",
         "description": "架构方案、接口契约和测试策略必须人工确认。"
       },
       {
         "id": "write-files",
         "name": "写文件前",
         "type": "human",
+        "domain": "code",
+        "trigger": "before_write",
+        "executor": "human_approval",
+        "enforcement": "block",
         "required": true,
+        "evidence": [
+          "拟修改文件列表",
+          "改动边界与影响面",
+          "验证方式与回滚预案"
+        ],
+        "passCriteria": "文件边界、影响面和验证方式已确认。",
+        "failAction": "revise",
         "description": "开始写入项目文件前需要确认改动边界。"
       },
       {
         "id": "completion-review",
         "name": "完成验收",
         "type": "human",
+        "domain": "test",
+        "trigger": "after_diff",
+        "executor": "human_approval",
+        "enforcement": "block",
         "required": true,
+        "evidence": [
+          "交付产物清单",
+          "验证结果",
+          "剩余风险与下一步"
+        ],
+        "passCriteria": "交付产物、验证结果和剩余风险已通过审查。",
+        "failAction": "revise",
         "description": "完成后必须回顾产物、测试和风险。"
       },
       {
         "id": "destructive-command",
         "name": "破坏性命令",
         "type": "human",
+        "domain": "security",
+        "trigger": "before_command",
+        "executor": "human_approval",
+        "enforcement": "block",
         "required": true,
+        "evidence": [
+          "即将执行的命令或操作",
+          "受影响资源",
+          "备份与回滚方案"
+        ],
+        "passCriteria": "操作必要性、影响面、备份与回滚方案已确认。",
+        "failAction": "revise",
         "description": "删除、重置、迁移等不可逆操作必须人工确认。"
+      },
+      {
+        "id": "deployment",
+        "name": "发布前确认",
+        "type": "human",
+        "domain": "architecture",
+        "trigger": "before_pr",
+        "executor": "human_approval",
+        "enforcement": "block",
+        "required": true,
+        "evidence": [
+          "方案摘要与关键取舍",
+          "接口契约/数据流",
+          "测试策略与主要风险"
+        ],
+        "passCriteria": "方案、接口契约、技术取舍和验证路径已确认。",
+        "failAction": "revise",
+        "description": "上线前必须人工确认发布范围、验证方式和回滚方案。"
       }
     ],
+    "knowledgeBase": {
+      "enabled": true,
+      "path": ".agentflow/wiki",
+      "domain": "核心研发流程 项目研发知识库",
+      "autoOrient": true,
+      "writeMode": "proposal_first",
+      "rawImmutable": true
+    },
     "stages": [
       {
         "id": "s1",
@@ -773,56 +836,6 @@
             ]
           }
         ]
-      },
-      {
-        "id": "s4",
-        "name": "测试验收",
-        "agents": [
-          {
-            "id": "a4",
-            "name": "测试工程师",
-            "agentName": "agentflow-tester",
-            "description": "Designs and runs validation for AgentFlow outputs, including acceptance checks, regression tests, and risk-focused review.",
-            "responsibility": "根据验收标准验证产物，输出风险、缺陷和回归测试建议。",
-            "source": "shared",
-            "model": "sonnet",
-            "tools": [
-              "Read",
-              "Write",
-              "Edit",
-              "Grep",
-              "Glob",
-              "Bash"
-            ],
-            "watch": [
-              "CodeChange",
-              "DevNotes"
-            ],
-            "produce": [
-              "TestReport",
-              "DefectList"
-            ],
-            "skills": []
-          }
-        ],
-        "actions": [
-          {
-            "id": "s4-action-1",
-            "name": "验证变更并形成测试报告",
-            "owner": "agentflow-tester",
-            "inputs": [
-              "CodeChange",
-              "DevNotes"
-            ],
-            "outputs": [
-              "TestReport",
-              "DefectList"
-            ],
-            "gates": [
-              "completion-review"
-            ]
-          }
-        ]
       }
     ],
     "organization": {
@@ -904,23 +917,6 @@
             "DevNotes"
           ],
           "responsibility": "按批准方案实现代码、保持小步提交、运行必要检查。"
-        },
-        {
-          "id": "a4",
-          "stageId": "s4",
-          "stageName": "测试验收",
-          "name": "测试工程师",
-          "agentName": "agentflow-tester",
-          "source": "shared",
-          "watch": [
-            "CodeChange",
-            "DevNotes"
-          ],
-          "produce": [
-            "TestReport",
-            "DefectList"
-          ],
-          "responsibility": "根据验收标准验证产物，输出风险、缺陷和回归测试建议。"
         }
       ]
     },
@@ -992,28 +988,6 @@
               ],
               "gates": [
                 "write-files"
-              ]
-            }
-          ]
-        },
-        {
-          "id": "s4",
-          "name": "测试验收",
-          "actions": [
-            {
-              "id": "s4-action-1",
-              "name": "验证变更并形成测试报告",
-              "owner": "agentflow-tester",
-              "inputs": [
-                "CodeChange",
-                "DevNotes"
-              ],
-              "outputs": [
-                "TestReport",
-                "DefectList"
-              ],
-              "gates": [
-                "completion-review"
               ]
             }
           ]
